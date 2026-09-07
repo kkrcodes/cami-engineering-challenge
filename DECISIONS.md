@@ -15,10 +15,11 @@ controller structure -> classification history. Reasoning per step:
   and fixes a correctness bug arguably worse than the N+1 (below).
 - **History last** — the biggest slice, and it depends on the controller's layering.
 
-**Cut-line at ~2h instead of ~4h:** ship CI + freshness + list perf, plus a minimal controller fix
-(DTOs/ValidationPipe only, skip extracting the service). Defer history entirely beyond a stubbed
-provider interface, and skip the extras (CORS, log gating, ESLint). The first three are the
-correctness/perf spine; everything after is additive surface.
+**Timebox — full scope, delivered in ROI order within the ~4h budget.** All five planted tasks, the
+classification-history slice, the extras, tests, and docs landed inside the exercise's ~4-hour
+window (≈2:30–6:30pm GST), worked in the order above. The cut-line, had the budget been tighter: keep the
+correctness/perf spine — CI + freshness + list perf + a minimal controller/validation fix — and
+defer the history slice and the extras first, since they're additive surface on top of that spine.
 
 **One deliberate break from strict ROI order:** `create`/`updateStatus`/`classify` all returned
 `{ error }` at HTTP 200 instead of throwing, and the web client only checks `res.ok` — so a
@@ -43,14 +44,20 @@ pulling forward even though the full controller refactor stayed in its ROI slot.
   sampled row.
 - **Freshness** — invalidation over optimistic updates. Simpler and guaranteed-correct under the
   timebox; optimistic update needs rollback handling on failure, which isn't free.
-- **Controller** — `class-validator` DTOs + a global `ValidationPipe` over hand-rolled `if` checks.
-  This is also what actually kills the 200-on-error bug — a thrown `BadRequestException` beats a
-  returned object the client happens to check `.error` on.
+- **Controller** — `class-validator` DTOs + a global
+  `ValidationPipe({ whitelist, forbidNonWhitelisted, transform })` over hand-rolled `if` checks. This
+  is also what actually kills the 200-on-error bug — a thrown `BadRequestException` beats a returned
+  object the client happens to check `.error` on. `forbidNonWhitelisted` additionally rejects unknown
+  fields with a 400 instead of silently dropping them, so a client typo or a stray field surfaces
+  rather than being swallowed.
 - **Classification persistence + provider seam** — classify logic lives in a `ClassificationService`
   so both the classify endpoint and history read from the same place. `ClassifierProvider.classify()`
   is async even though the keyword implementation is synchronous, because the whole point of the
   interface is that an LLM-backed provider is a drop-in later — a sync signature would mean
-  widening it (and every call site) when that day comes.
+  widening it (and every call site) when that day comes. The request write-back and the history-row
+  insert run in one transaction (the transactional `manager`, not the module repositories), so a
+  classify is atomic; the provider call is kept outside that transaction so a future LLM's latency
+  never holds a DB connection open.
 - **Migration** — hand-written raw SQL matching how `InitialSchema` is already written in this
   repo, rather than switching styles for one table. Additive/expand only: new table, nullable FK,
   nothing on existing tables changes.
@@ -116,10 +123,23 @@ needed here.
 Not done: a repository/port seam for classification storage (task 6 stretch) — the service still
 talks to the TypeORM repository directly. It'd pay rent mainly in testability; left as additive.
 
+## Category and confidence are classification outputs (by design)
+
+`category` and `confidence` are results of `classify` — persisted onto a request only when a
+`requestId` is passed — not independently editable fields. There is deliberately no endpoint to set
+them at creation or edit them directly; they mean "what the classifier decided." A manual override
+(so an agent could correct a misclassification) is a reasonable future addition, but that's a product
+decision, not a missing piece of this slice. Pagination is likewise server-side on the API (default
+25, `limit`/`offset`, cap 100); the web renders the first page, and a next/prev pager is a small,
+optional follow-up rather than a defect.
+
 ## What I would do with more time
+- A manual category/confidence override and a UI pager — both optional enhancements (see the note above).
 - Optimistic UI updates with rollback on mutation failure.
 - Keyset pagination instead of offset — offset is fine at 1,200 rows, not at real scale.
 - Real auth + tenant scoping, and rate limiting in front of `/classify`.
+- Centralised config (`ConfigModule` + schema validation) instead of scattered `process.env` reads —
+  fine at this size, but it fails on first use rather than at boot when a var is missing or malformed.
 - Richer history filters (date range, confidence threshold) and sortable columns.
 - ESLint as a real, enforced CI gate — right now `lint --if-present` is a silent no-op because
   there's no ESLint config to run.
