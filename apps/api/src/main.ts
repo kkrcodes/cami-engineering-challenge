@@ -8,7 +8,9 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true }),
   );
-  app.enableCors({ origin: true });
+  // Restrict CORS to the web origin instead of reflecting any origin.
+  const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
+  app.enableCors({ origin: webOrigin });
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port);
   // eslint-disable-next-line no-console

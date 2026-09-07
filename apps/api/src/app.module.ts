@@ -12,7 +12,8 @@ import { Classification } from './requests/classification.entity';
       url: process.env.DATABASE_URL ?? 'postgres://cami:cami@localhost:5432/cami',
       entities: [CustomerRequest, RequestNote, Classification],
       synchronize: false,
-      logging: ['query'],
+      // Query logging is opt-in (noisy in production); errors always logged.
+      logging: process.env.DB_LOGGING === 'true' ? ['query'] : ['error'],
     }),
     RequestsModule,
   ],
