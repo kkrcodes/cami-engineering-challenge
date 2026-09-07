@@ -18,40 +18,81 @@ export type RequestListItem = {
 
 @Injectable()
 export class RequestsService {
+  static readonly DEFAULT_LIMIT = 25;
+  static readonly MAX_LIMIT = 100;
+
   constructor(
     @InjectRepository(CustomerRequest)
     private readonly requests: Repository<CustomerRequest>,
-    @InjectRepository(RequestNote)
-    private readonly notes: Repository<RequestNote>,
   ) {}
 
-  async list(): Promise<RequestListItem[]> {
-    const rows = await this.requests.find({
-      order: { createdAt: 'DESC' },
-    });
+  /**
+   * List requests with per-row note aggregates in a single query.
+   *
+   * A grouped COUNT gives `noteCount` and a LIMIT 1 correlated subquery gives
+   * the latest-note preview, so the query count stays constant in the number of
+   * rows rather than issuing one notes query per request.
+   * Paginated (the client only renders a page), so the response stays an array
+   * of the same shape.
+   */
+  async list(
+    limit: number = RequestsService.DEFAULT_LIMIT,
+    offset = 0,
+  ): Promise<RequestListItem[]> {
+    const take =
+      Number.isFinite(limit) && limit > 0
+        ? Math.min(Math.floor(limit), RequestsService.MAX_LIMIT)
+        : RequestsService.DEFAULT_LIMIT;
+    const skip = Number.isFinite(offset) && offset > 0 ? Math.floor(offset) : 0;
 
-    const items: RequestListItem[] = [];
-    for (const row of rows) {
-      const notes = await this.notes.find({
-        where: { requestId: row.id },
-        order: { createdAt: 'DESC' },
-      });
-      row.notes = notes;
+    const rows = await this.requests
+      .createQueryBuilder('request')
+      .leftJoin('request.notes', 'note')
+      .select('request.id', 'id')
+      .addSelect('request.message', 'message')
+      .addSelect('request.status', 'status')
+      .addSelect('request.category', 'category')
+      .addSelect('request.confidence', 'confidence')
+      .addSelect('request.createdAt', 'createdAt')
+      .addSelect('request.updatedAt', 'updatedAt')
+      .addSelect('COUNT(note.id)', 'noteCount')
+      .addSelect(
+        (sub) =>
+          sub
+            .select('latest.body')
+            .from(RequestNote, 'latest')
+            .where('latest.requestId = request.id')
+            .orderBy('latest.createdAt', 'DESC')
+            .limit(1),
+        'latestNotePreview',
+      )
+      .groupBy('request.id')
+      .orderBy('request.createdAt', 'DESC')
+      .limit(take)
+      .offset(skip)
+      .getRawMany<{
+        id: string;
+        message: string;
+        status: RequestStatus;
+        category: string | null;
+        confidence: number | null;
+        createdAt: Date;
+        updatedAt: Date;
+        noteCount: string;
+        latestNotePreview: string | null;
+      }>();
 
-      items.push({
-        id: row.id,
-        message: row.message,
-        status: row.status,
-        category: row.category,
-        confidence: row.confidence,
-        noteCount: notes.length,
-        latestNotePreview: notes[0]?.body ?? null,
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-      });
-    }
-
-    return items;
+    return rows.map((row) => ({
+      id: row.id,
+      message: row.message,
+      status: row.status,
+      category: row.category,
+      confidence: row.confidence,
+      noteCount: Number(row.noteCount),
+      latestNotePreview: row.latestNotePreview ?? null,
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
+    }));
   }
 
   async getById(id: string): Promise<CustomerRequest> {
@@ -65,8 +106,21 @@ export class RequestsService {
     return row;
   }
 
+  /**
+   * Fetch a request WITHOUT its notes — for write paths (status update,
+   * classify) that only touch scalar columns and would otherwise eager-load
+   * every note just to save one field.
+   */
+  async requireById(id: string): Promise<CustomerRequest> {
+    const row = await this.requests.findOne({ where: { id } });
+    if (!row) {
+      throw new NotFoundException(`Request ${id} not found`);
+    }
+    return row;
+  }
+
   async updateStatus(id: string, status: RequestStatus): Promise<CustomerRequest> {
-    const row = await this.getById(id);
+    const row = await this.requireById(id);
     row.status = status;
     return this.requests.save(row);
   }
@@ -79,9 +133,5 @@ export class RequestsService {
       confidence: null,
     });
     return this.requests.save(row);
-  }
-
-  async save(request: CustomerRequest): Promise<CustomerRequest> {
-    return this.requests.save(request);
   }
 }

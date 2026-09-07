@@ -69,7 +69,17 @@ export async function classifyMessage(message: string, requestId?: string) {
   return res.json();
 }
 
-export async function fetchHistory(category?: string) {
+export type ClassificationHistoryItem = {
+  id: string;
+  requestId: string | null;
+  message: string;
+  category: string; // 'support' | 'sales' | 'billing' | 'unknown'
+  confidence: number;
+  provider: string;
+  createdAt: string; // ISO timestamp
+};
+
+export async function fetchHistory(category?: string): Promise<ClassificationHistoryItem[]> {
   const qs = category ? `?category=${encodeURIComponent(category)}` : '';
   const res = await fetch(`${API_URL}/requests/history${qs}`);
   if (!res.ok) {

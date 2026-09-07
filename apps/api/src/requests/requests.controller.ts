@@ -1,34 +1,33 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { RequestsService } from './requests.service';
-import { KeywordClassifier } from './keyword-classifier';
-import { RequestStatus } from './customer-request.entity';
+import { ClassificationService } from './classification.service';
+import { ClassifyRequestDto } from './dto/classify-request.dto';
+import { CreateRequestDto } from './dto/create-request.dto';
+import { UpdateStatusDto } from './dto/update-status.dto';
+import { HistoryQueryDto } from './dto/history-query.dto';
 
 @Controller('requests')
 export class RequestsController {
   constructor(
     private readonly requestsService: RequestsService,
-    private readonly classifier: KeywordClassifier,
+    private readonly classificationService: ClassificationService,
   ) {}
 
   @Get()
-  list() {
-    return this.requestsService.list();
+  list(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+    return this.requestsService.list(
+      limit !== undefined ? Number(limit) : undefined,
+      offset !== undefined ? Number(offset) : undefined,
+    );
   }
 
   @Get('history')
-  history(@Query('category') _category?: string) {
-    return {
-      items: [],
-      message: 'Classification history is not implemented yet.',
-    };
+  history(@Query() query: HistoryQueryDto) {
+    return this.classificationService.history(
+      query.category,
+      query.limit,
+      query.offset,
+    );
   }
 
   @Get(':id')
@@ -37,66 +36,17 @@ export class RequestsController {
   }
 
   @Post()
-  create(@Body() body: { message?: string }) {
-    if (!body?.message || typeof body.message !== 'string') {
-      return { error: 'message is required' };
-    }
-    return this.requestsService.create(body.message);
+  create(@Body() dto: CreateRequestDto) {
+    return this.requestsService.create(dto.message);
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body() body: { status?: RequestStatus }) {
-    if (!body?.status) {
-      return { error: 'status is required' };
-    }
-    return this.requestsService.updateStatus(id, body.status);
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
+    return this.requestsService.updateStatus(id, dto.status);
   }
 
-  /**
-   * Classify a customer request. Business rules currently live in the controller.
-   */
   @Post('classify')
-  async classify(@Body() body: any) {
-    const message = body?.message;
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return { error: 'message must be a non-empty string' };
-    }
-
-    if (message.length > 2000) {
-      return { error: 'message too long' };
-    }
-
-    const trimmed = message.trim();
-    let result = this.classifier.classify(trimmed);
-
-    // Soften confidence for very short messages.
-    if (trimmed.split(/\s+/).length < 3 && result.category !== 'unknown') {
-      result = {
-        category: result.category,
-        confidence: Math.max(0.5, result.confidence - 0.15),
-      };
-    }
-
-    // Prefer "unknown" when confidence is weak.
-    if (result.confidence < 0.55) {
-      result = { category: 'unknown', confidence: result.confidence };
-    }
-
-    const requestId = body.requestId as string | undefined;
-    if (requestId) {
-      const existing: any = await this.requestsService.getById(requestId);
-      existing.category = result.category;
-      existing.confidence = result.confidence;
-      if (existing.status === 'open') {
-        existing.status = 'in_progress';
-      }
-      await this.requestsService.save(existing);
-    }
-
-    return {
-      category: result.category,
-      confidence: result.confidence,
-      requestId: requestId ?? null,
-    };
+  classify(@Body() dto: ClassifyRequestDto) {
+    return this.classificationService.classify(dto);
   }
 }

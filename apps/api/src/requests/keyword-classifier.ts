@@ -1,6 +1,16 @@
 import { Injectable } from '@nestjs/common';
 
-export type ClassificationCategory = 'support' | 'sales' | 'billing' | 'unknown';
+// Single source of truth for the classifier's taxonomy. The category type is
+// derived from it so the runtime list (used to validate the /history filter)
+// and the compile-time type can never drift apart.
+export const CLASSIFICATION_CATEGORIES = [
+  'support',
+  'sales',
+  'billing',
+  'unknown',
+] as const;
+
+export type ClassificationCategory = (typeof CLASSIFICATION_CATEGORIES)[number];
 
 export type ClassificationResult = {
   category: ClassificationCategory;
