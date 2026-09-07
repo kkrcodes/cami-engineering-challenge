@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { fetchHistory } from '@/lib/api';
 
+const CATEGORIES = ['support', 'sales', 'billing', 'unknown'];
+
 export default function HistoryPage() {
   const [category, setCategory] = useState('');
   const historyQuery = useQuery({
@@ -16,33 +18,58 @@ export default function HistoryPage() {
       <div>
         <h2 className="text-xl font-semibold">Classification history</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Persist classifications (schema + migration), then make this view list and filter
-          them. The classifier belongs behind a provider interface that could later be an LLM
-          — see core task 5 in the README.
+          Every classification is persisted; filter by category.
         </p>
       </div>
 
       <label className="flex max-w-sm flex-col gap-1 text-sm">
         <span className="font-medium text-slate-700">Filter by category</span>
-        <input
-          className="rounded border border-slate-300 px-3 py-2"
+        <select
+          className="rounded border border-slate-300 bg-white px-2 py-1"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          placeholder="billing | sales | support | unknown"
-        />
+        >
+          <option value="">All categories</option>
+          {CATEGORIES.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
       </label>
 
-      <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
-        {historyQuery.isLoading ? (
-          <p>Loading…</p>
-        ) : historyQuery.isError ? (
-          <p className="text-red-700">Failed to load history.</p>
-        ) : (
-          <pre className="overflow-x-auto whitespace-pre-wrap">
-            {JSON.stringify(historyQuery.data, null, 2)}
-          </pre>
-        )}
-      </div>
+      {historyQuery.isLoading ? (
+        <p className="text-sm text-slate-600">Loading…</p>
+      ) : historyQuery.isError ? (
+        <p className="text-sm text-red-700">Failed to load history.</p>
+      ) : (historyQuery.data ?? []).length === 0 ? (
+        <p className="text-sm text-slate-600">No classifications yet.</p>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Time</th>
+                <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Confidence</th>
+                <th className="px-4 py-3">Message</th>
+                <th className="px-4 py-3">Provider</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {(historyQuery.data ?? []).map((row) => (
+                <tr key={row.id}>
+                  <td className="px-4 py-3">{new Date(row.createdAt).toLocaleString()}</td>
+                  <td className="px-4 py-3">{row.category}</td>
+                  <td className="px-4 py-3 tabular-nums">{row.confidence.toFixed(2)}</td>
+                  <td className="max-w-md truncate px-4 py-3">{row.message}</td>
+                  <td className="px-4 py-3">{row.provider}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
