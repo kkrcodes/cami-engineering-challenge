@@ -3,7 +3,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 /**
  * Expand migration: additive new table, backward-compatible with the previous
  * release (nothing reads or writes `classifications` until the code that ships
- * with this migration). Ships alongside task 5.
+ * with this migration).
  */
 export class AddClassifications1710000100000 implements MigrationInterface {
   name = 'AddClassifications1710000100000';

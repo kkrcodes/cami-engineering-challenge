@@ -29,9 +29,9 @@ export class RequestsService {
   /**
    * List requests with per-row note aggregates in a single query.
    *
-   * Replaces an N+1 (one notes query per request) with one aggregate query:
-   * a grouped COUNT for `noteCount` and a LIMIT 1 correlated subquery for the
-   * latest note preview. Query count is now constant in the number of rows.
+   * A grouped COUNT gives `noteCount` and a LIMIT 1 correlated subquery gives
+   * the latest-note preview, so the query count stays constant in the number of
+   * rows rather than issuing one notes query per request.
    * Paginated (the client only renders a page), so the response stays an array
    * of the same shape.
    */

@@ -42,7 +42,7 @@ export class ClassificationService {
   async classify(dto: ClassifyRequestDto): Promise<ClassifyResult> {
     // The provider call stays OUTSIDE the transaction below: a future LLM
     // provider is an external HTTP hop, and holding a DB connection open across
-    // external I/O turns a slow call into lock contention (see prep rubric §6).
+    // external I/O turns a slow call into lock contention.
     const result = this.applyConfidencePolicy(
       await this.provider.classify(dto.message),
       dto.message,
@@ -115,7 +115,7 @@ export class ClassificationService {
   /**
    * Post-classification policy, independent of the classifier implementation:
    * soften confidence for very short messages, and fall back to "unknown" when
-   * confidence is weak. Behaviour preserved from the original controller.
+   * confidence is weak.
    */
   private applyConfidencePolicy(
     result: ClassificationResult,

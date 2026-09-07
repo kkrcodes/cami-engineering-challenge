@@ -116,7 +116,7 @@ describe('RequestsService.list (aggregation)', () => {
     await requestsService.list(100, 0);
     const forManyRows = queryCount;
 
-    // The whole point of the fix: query count does not grow with row count.
+    // Query count must not grow with row count — the N+1 regression guard.
     expect(forManyRows).toBe(forFewRows);
     expect(forManyRows).toBeLessThanOrEqual(2);
   });
