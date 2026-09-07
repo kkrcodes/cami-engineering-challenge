@@ -106,8 +106,21 @@ export class RequestsService {
     return row;
   }
 
+  /**
+   * Fetch a request WITHOUT its notes — for write paths (status update,
+   * classify) that only touch scalar columns and would otherwise eager-load
+   * every note just to save one field.
+   */
+  async requireById(id: string): Promise<CustomerRequest> {
+    const row = await this.requests.findOne({ where: { id } });
+    if (!row) {
+      throw new NotFoundException(`Request ${id} not found`);
+    }
+    return row;
+  }
+
   async updateStatus(id: string, status: RequestStatus): Promise<CustomerRequest> {
-    const row = await this.getById(id);
+    const row = await this.requireById(id);
     row.status = status;
     return this.requests.save(row);
   }

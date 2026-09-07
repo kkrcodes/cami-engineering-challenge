@@ -46,7 +46,7 @@ export class ClassificationService {
 
     let requestId: string | null = null;
     if (dto.requestId) {
-      const request = await this.requestsService.getById(dto.requestId);
+      const request = await this.requestsService.requireById(dto.requestId);
       request.category = result.category;
       request.confidence = result.confidence;
       if (request.status === 'open') {
