@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RequestsService } from './requests.service';
+import { CustomerRequest } from './customer-request.entity';
 import { ClassificationResult } from './keyword-classifier';
 import { CLASSIFIER_PROVIDER, ClassifierProvider } from './classifier.provider';
 import { Classification } from './classification.entity';
@@ -39,34 +40,43 @@ export class ClassificationService {
   ) {}
 
   async classify(dto: ClassifyRequestDto): Promise<ClassifyResult> {
+    // The provider call stays OUTSIDE the transaction below: a future LLM
+    // provider is an external HTTP hop, and holding a DB connection open across
+    // external I/O turns a slow call into lock contention (see prep rubric §6).
     const result = this.applyConfidencePolicy(
       await this.provider.classify(dto.message),
       dto.message,
     );
 
-    let requestId: string | null = null;
+    let request: CustomerRequest | null = null;
     if (dto.requestId) {
-      const request = await this.requestsService.requireById(dto.requestId);
+      request = await this.requestsService.requireById(dto.requestId);
       request.category = result.category;
       request.confidence = result.confidence;
       if (request.status === 'open') {
         request.status = 'in_progress';
       }
-      await this.requestsService.save(request);
-      requestId = request.id;
     }
 
-    await this.classifications.save(
-      this.classifications.create({
-        requestId,
-        message: dto.message,
-        category: result.category,
-        confidence: result.confidence,
-        provider: this.provider.name,
-      }),
-    );
+    // Write the request update and the history row atomically — on the linked
+    // path both land or neither does. Uses the transactional manager (not the
+    // module-level repositories) so the two writes share one transaction.
+    await this.classifications.manager.transaction(async (manager) => {
+      if (request) {
+        await manager.save(request);
+      }
+      await manager.save(
+        this.classifications.create({
+          requestId: request?.id ?? null,
+          message: dto.message,
+          category: result.category,
+          confidence: result.confidence,
+          provider: this.provider.name,
+        }),
+      );
+    });
 
-    return { ...result, requestId };
+    return { ...result, requestId: request?.id ?? null };
   }
 
   async history(

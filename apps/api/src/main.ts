@@ -6,7 +6,11 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, transform: true }),
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
   );
   // Restrict CORS to the web origin instead of reflecting any origin.
   const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:3000';

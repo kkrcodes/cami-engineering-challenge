@@ -134,8 +134,4 @@ export class RequestsService {
     });
     return this.requests.save(row);
   }
-
-  async save(request: CustomerRequest): Promise<CustomerRequest> {
-    return this.requests.save(request);
-  }
 }

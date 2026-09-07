@@ -7,6 +7,7 @@ import { RequestsService } from '../src/requests/requests.service';
 import { ClassificationService } from '../src/requests/classification.service';
 import { KeywordClassifier } from '../src/requests/keyword-classifier';
 import { KeywordClassifierProvider } from '../src/requests/keyword-classifier.provider';
+import { ClassifierProvider } from '../src/requests/classifier.provider';
 
 // Isolated schema so these tests never touch a developer's seeded `public` data,
 // and so they work on the empty CI database (the Test step runs before migrate).
@@ -175,5 +176,34 @@ describe('ClassificationService', () => {
 
     const all = await classificationService.history();
     expect(all).toHaveLength(2);
+  });
+
+  it('is atomic: a failed history insert rolls back the request update', async () => {
+    const request = await seedRequest('please refund my invoice charge');
+
+    // A provider whose name overflows classifications.provider (varchar 64),
+    // so the history INSERT fails *inside* the transaction. The request update
+    // must roll back with it — no half-applied classify.
+    const overflowingProvider: ClassifierProvider = {
+      name: 'x'.repeat(100),
+      classify: async () => ({ category: 'billing', confidence: 0.9 }),
+    };
+    const failing = new ClassificationService(
+      overflowingProvider,
+      classifications,
+      requestsService,
+    );
+
+    await expect(
+      failing.classify({
+        message: 'please refund my invoice charge',
+        requestId: request.id,
+      }),
+    ).rejects.toThrow();
+
+    const reloaded = await requests.findOneByOrFail({ id: request.id });
+    expect(reloaded.category).toBeNull(); // request update rolled back
+    expect(reloaded.status).toBe('open');
+    expect(await classifications.count()).toBe(0); // no orphan history row
   });
 });

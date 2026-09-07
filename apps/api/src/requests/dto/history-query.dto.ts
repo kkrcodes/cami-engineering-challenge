@@ -1,11 +1,10 @@
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
-
-const CATEGORIES = ['support', 'sales', 'billing', 'unknown'];
+import { CLASSIFICATION_CATEGORIES } from '../keyword-classifier';
 
 export class HistoryQueryDto {
   @IsOptional()
-  @IsIn(CATEGORIES)
+  @IsIn([...CLASSIFICATION_CATEGORIES])
   category?: string;
 
   @IsOptional()
