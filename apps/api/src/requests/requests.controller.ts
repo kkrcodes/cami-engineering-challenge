@@ -19,8 +19,11 @@ export class RequestsController {
   ) {}
 
   @Get()
-  list() {
-    return this.requestsService.list();
+  list(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+    return this.requestsService.list(
+      limit !== undefined ? Number(limit) : undefined,
+      offset !== undefined ? Number(offset) : undefined,
+    );
   }
 
   @Get('history')
